@@ -37,7 +37,7 @@ pip install fastmcp httpx
 
 ## Running the MCP Server
 ```bash
-uv run mcp run server.py -t sse
+uv run mcp run server.py:mcp -t sse
 ```
 - Starts the server at http://localhost:8000/sse
 - Required for Cursor or AI agent use
