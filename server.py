@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-from fastmcp import FastMCP, Context
+from mcp.server.fastmcp.server import FastMCP
+from mcp.server.fastmcp.server import Context
 from codeqlclient import CodeQLQueryServer
 from pathlib import Path
 
