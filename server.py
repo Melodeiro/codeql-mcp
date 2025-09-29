@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from mcp.server.fastmcp.server import FastMCP
 from mcp.server.fastmcp.server import Context
 from codeqlclient import CodeQLQueryServer
 from pathlib import Path
+
+
 
 mcp = FastMCP(
     name="CodeQL",

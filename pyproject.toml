@@ -7,4 +7,5 @@ dependencies = [
     "fastmcp>=2.12.4",
     "httpx>=0.28.1",
     "mcp[cli]",
+    "python-dotenv>=1.0.0",
 ]
