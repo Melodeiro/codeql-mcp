@@ -27,12 +27,7 @@ This project runs a Model Context Protocol (MCP) server that wraps the CodeQL qu
 Install with [`uv`](https://github.com/astral-sh/uv):
 
 ```bash
-uv pip install -r requirements.txt
-```
-
-or with `pip`:
-```bash
-pip install fastmcp httpx
+uv sync
 ```
 
 ## Running the MCP Server

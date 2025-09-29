@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
+import os
+
 from mcp.server.fastmcp.server import FastMCP
 from mcp.server.fastmcp.server import Context
 from codeqlclient import CodeQLQueryServer
 from pathlib import Path
 
-mcp = FastMCP("CodeQL", version="1.0.0", enable_sse=True)
+mcp = FastMCP(
+    name="CodeQL",
+    port=os.environ.get("PORT", 8000),
+)
 qs = CodeQLQueryServer()
 qs.start()
 
@@ -101,4 +106,5 @@ async def find_predicate_position(file: str, name: str) -> dict:
 
 if __name__ == "__main__":
     print("Starting CodeQL MCP server...")
-    mcp.run(host="0.0.0.0", port=8000)
+    mcp.settings.port = os.environ.get("PORT", 8000)
+    mcp.run("streamable-http")
