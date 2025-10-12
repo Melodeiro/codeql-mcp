@@ -37,6 +37,8 @@ class CodeQLQueryServer:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             bufsize=1,  # line-buffered
         )
         self.reader_thread = threading.Thread(
