@@ -1,0 +1,12 @@
+---
+sourceLocationPrefix: C:\StoreSSD\Programming\Python\codeql-mcp\tests\query_tests
+baselineLinesOfCode: 3
+unicodeNewlines: false
+columnKind: utf32
+primaryLanguage: python
+creationMetadata:
+  cliVersion: 2.23.2
+  creationTime: 2025-10-12T12:32:36.725236Z
+overlayBaseDatabase: false
+overlayDatabase: false
+finalised: true

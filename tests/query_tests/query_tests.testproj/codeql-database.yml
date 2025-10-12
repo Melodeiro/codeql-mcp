@@ -1,0 +1,45 @@
+---
+sourceLocationPrefix: C:\StoreSSD\Programming\Python\codeql-mcp\tests\query_tests
+baselineLinesOfCode: 0
+unicodeNewlines: false
+columnKind: utf32
+primaryLanguage: python
+inProgress:
+  primaryLanguage: python
+  installedExtractors:
+    actions:
+     - C:/ProgramData/chocolatey/lib/codeql/tools/codeql/actions
+    cpp:
+     - C:/ProgramData/chocolatey/lib/codeql/tools/codeql/cpp
+    csharp:
+     - C:/ProgramData/chocolatey/lib/codeql/tools/codeql/csharp
+    csv:
+     - C:/ProgramData/chocolatey/lib/codeql/tools/codeql/csv
+    go:
+     - C:/ProgramData/chocolatey/lib/codeql/tools/codeql/go
+    html:
+     - C:/ProgramData/chocolatey/lib/codeql/tools/codeql/html
+    java:
+     - C:/ProgramData/chocolatey/lib/codeql/tools/codeql/java
+    javascript:
+     - C:/ProgramData/chocolatey/lib/codeql/tools/codeql/javascript
+    properties:
+     - C:/ProgramData/chocolatey/lib/codeql/tools/codeql/properties
+    python:
+     - C:/ProgramData/chocolatey/lib/codeql/tools/codeql/python
+    ruby:
+     - C:/ProgramData/chocolatey/lib/codeql/tools/codeql/ruby
+    rust:
+     - C:/ProgramData/chocolatey/lib/codeql/tools/codeql/rust
+    swift:
+     - C:/ProgramData/chocolatey/lib/codeql/tools/codeql/swift
+    xml:
+     - C:/ProgramData/chocolatey/lib/codeql/tools/codeql/xml
+    yaml:
+     - C:/ProgramData/chocolatey/lib/codeql/tools/codeql/yaml
+creationMetadata:
+  cliVersion: 2.23.2
+  creationTime: 2025-10-12T12:29:30.809115100Z
+overlayBaseDatabase: false
+overlayDatabase: false
+finalised: false
