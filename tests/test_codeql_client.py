@@ -406,29 +406,30 @@ class TestBqrsDecoding:
             assert "decode" in cmd
             assert "--format=json" in cmd or "json" in cmd
 
-    @patch('subprocess.run')
-    @patch('os.path.exists')
-    def test_decode_bqrs_csv(self, mock_exists, mock_run):
+    def test_decode_bqrs_csv(self, tmp_path):
         """Test BQRS decoding to CSV"""
-        mock_exists.return_value = True
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout="col1,col2\nval1,val2"
-        )
+        bqrs_file = tmp_path / "test.bqrs"
+        bqrs_file.write_bytes(b"fake bqrs content")
 
         server = CodeQLQueryServer()
-        result = server.decode_bqrs("/path/to/results.bqrs", "csv")
+        
+        import subprocess
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout="col1,col2\nval1,val2"
+            )
+            
+            result = server.decode_bqrs(str(bqrs_file), "csv")
+            
+            assert "col1,col2" in result
+            assert "val1,val2" in result
 
-        assert "col1,col2" in result
-
-    @patch('os.path.exists')
-    def test_decode_bqrs_file_not_found(self, mock_exists):
+    def test_decode_bqrs_file_not_found(self):
         """Test error when BQRS file doesn't exist"""
-        mock_exists.return_value = False
-
         server = CodeQLQueryServer()
         with pytest.raises(FileNotFoundError):
-            server.decode_bqrs("/nonexistent.bqrs")
+            server.decode_bqrs("/nonexistent/path/to/file.bqrs")
 
     def test_decode_bqrs_command_failure(self, tmp_path):
         """Test error when decode command fails"""
