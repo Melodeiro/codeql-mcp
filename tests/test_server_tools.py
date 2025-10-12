@@ -283,6 +283,9 @@ class TestListSupportedLanguages:
 
         languages = [item.text for item in result.content]
         assert "python" in languages
+        assert "java" in languages
+        assert "javascript" in languages
+        assert "cpp" in languages
         assert len(languages) > 0
 
     @pytest.mark.asyncio

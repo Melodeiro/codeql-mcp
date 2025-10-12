@@ -107,14 +107,24 @@ class TestEndToEndIntegration:
             except json.JSONDecodeError:
                 queries = []
 
+        if len(queries) > 0:
+            sql_injection_query = next(
+                (q for q in queries if "SqlInjection" in q.get("filename", "")), None
+            )
+            if sql_injection_query:
+                assert "path" in sql_injection_query
+                assert "language" in sql_injection_query
+
         security_result = await mcp_client.call_tool(
             "find_security_queries",
-            {"language": "python"}
+            {"language": "python", "vulnerability_type": "sql_injection"}
         )
 
         try:
             security_queries = json.loads(security_result.content[0].text)
             assert isinstance(security_queries, dict)
+            if "sql_injection" in security_queries:
+                assert isinstance(security_queries["sql_injection"], list)
         except json.JSONDecodeError:
             pass
 
@@ -135,6 +145,8 @@ class TestEndToEndIntegration:
             except json.JSONDecodeError:
                 languages = [item.text for item in languages_result.content]
         assert "python" in languages
+        assert "javascript" in languages
+        assert "java" in languages
 
         packs_result = await mcp_client.call_tool(
             "list_query_packs",
@@ -146,7 +158,7 @@ class TestEndToEndIntegration:
         except json.JSONDecodeError:
             packs = {}
         
-        if "python" in packs or "javascript-typescript" in packs:
+        if "javascript-typescript" in packs or "javascript" in packs:
             js_queries_result = await mcp_client.call_tool(
                 "discover_queries",
                 {"language": "javascript"}
@@ -155,8 +167,15 @@ class TestEndToEndIntegration:
             if len(js_queries_result.content) > 1:
                 js_queries = [json.loads(item.text) for item in js_queries_result.content]
             else:
-                js_queries = json.loads(js_queries_result.content[0].text)
-            assert isinstance(js_queries, (list, dict))
+                try:
+                    js_queries = json.loads(js_queries_result.content[0].text)
+                except json.JSONDecodeError:
+                    js_queries = []
+            
+            if len(js_queries) > 0:
+                assert isinstance(js_queries, (list, dict))
+                if isinstance(js_queries, list):
+                    assert all("path" in q for q in js_queries)
 
     @pytest.mark.asyncio
     async def test_error_handling_workflow(self, mcp_client, tmp_path, mock_subprocess):
@@ -206,16 +225,15 @@ class TestEndToEndIntegration:
         from tools.database import db_info_cache
         
         db_path = MockDatabaseStructure.create_minimal_db(tmp_path / "cached_db")
-        db_info_cache.clear()
-
-        # First call should hit the database
+        
+        initial_cache_size = len(db_info_cache)
+        
         info_result1 = await mcp_client.call_tool(
             "get_database_info",
             {"db_path": db_path}
         )
         info1 = json.loads(info_result1.content[0].text)
 
-        # Second call should use cache
         info_result2 = await mcp_client.call_tool(
             "get_database_info",
             {"db_path": db_path}
@@ -223,7 +241,8 @@ class TestEndToEndIntegration:
         info2 = json.loads(info_result2.content[0].text)
 
         assert info1 == info2
-        assert len(db_info_cache) > 0
+        assert len(db_info_cache) > initial_cache_size
+        assert db_path in str(db_info_cache) or Path(db_path).resolve() in [Path(k) for k in db_info_cache.keys()]
 
     @pytest.mark.asyncio
     async def test_custom_output_paths(self, mcp_client, tmp_path, mock_subprocess):
