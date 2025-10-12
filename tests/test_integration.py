@@ -134,9 +134,11 @@ class TestEndToEndIntegration:
         assert "sql_injection" in security_queries
 
         # Test predicate in the query
-        with patch('server.qs') as mock_qs:
+        with patch('server.qs') as mock_qs, \
+             patch('tools.query.validate_query_file') as mock_validate:
             mock_qs.quick_evaluate_and_wait = MagicMock()
             mock_qs.find_predicate_identifier_position.return_value = (10, 1, 10, 15)
+            mock_validate.return_value = {"valid": True, "error": None}
 
             test_result = await mcp_client.call_tool(
                 "test_predicate",
@@ -294,15 +296,21 @@ class TestEndToEndIntegration:
 
         db_path = MockDatabaseStructure.create_minimal_db(tmp_path / "test_db")
         custom_output = str(tmp_path / "custom_results")
+        
+        # Create test query file
+        query_file = tmp_path / "test.ql"
+        query_file.write_text("select 1")
 
-        with patch('server.qs') as mock_qs:
+        with patch('server.qs') as mock_qs, \
+             patch('tools.query.validate_query_syntax') as mock_validate_syntax:
             mock_qs.evaluate_and_wait = MagicMock()
+            mock_validate_syntax.return_value = {"valid": True, "error": None}
 
             # Test custom output for query evaluation
             eval_result = await mcp_client.call_tool(
                 "evaluate_query",
                 {
-                    "query_path": str(tmp_path / "test.ql"),
+                    "query_path": str(query_file),
                     "db_path": db_path,
                     "output_path": custom_output + ".bqrs"
                 }
@@ -537,7 +545,8 @@ class TestPerformanceAndScaling:
         # This test ensures that caches are properly managed
         # and don't grow unbounded
 
-        initial_cache_size = len(server.db_info_cache)
+        from tools.database import db_info_cache
+        initial_cache_size = len(db_info_cache)
 
         # Create multiple temporary databases
         for i in range(10):
@@ -555,6 +564,6 @@ class TestPerformanceAndScaling:
                 )
 
         # Cache should have grown but not excessively
-        final_cache_size = len(server.db_info_cache)
+        final_cache_size = len(db_info_cache)
         assert final_cache_size > initial_cache_size
         assert final_cache_size <= initial_cache_size + 10
