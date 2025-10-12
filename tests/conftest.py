@@ -209,6 +209,67 @@ def mock_db_info():
     }
 
 
+@pytest.fixture(scope="session")
+def real_test_database():
+    """
+    Real CodeQL test database - created once per session, reused across tests
+    
+    Creates database from tests/query_tests/test.py if it doesn't exist.
+    Uses Python from current venv.
+    Also precompiles queries if not already compiled.
+    """
+    import os
+    import subprocess
+    import sys
+    
+    test_dir = os.path.join(os.path.dirname(__file__), "query_tests")
+    db_path = os.path.join(test_dir, "test_db")
+    
+    # Check if database already exists
+    db_exists = os.path.exists(os.path.join(db_path, "codeql-database.yml"))
+    
+    if not db_exists:
+        # Create database using venv Python
+        print(f"\n[SETUP] Creating test database at {db_path}...")
+        venv_python = sys.executable
+        
+        result = subprocess.run(
+            [
+                "codeql", "database", "create", db_path,
+                "--language=python",
+                f"--source-root={test_dir}",
+                "--extractor-option", "python_executable_name=python"
+            ],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "PATH": os.path.dirname(venv_python) + os.pathsep + os.environ["PATH"]}
+        )
+        
+        if result.returncode != 0:
+            pytest.skip(f"Failed to create test database: {result.stderr}")
+        
+        print(f"[SETUP] Test database created successfully")
+    
+    # Check if queries are precompiled
+    precompiled_dir = os.path.join(test_dir, ".codeql", "precompiled")
+    if not os.path.exists(precompiled_dir) or not os.listdir(precompiled_dir):
+        print(f"\n[SETUP] Precompiling queries...")
+        query_file = os.path.join(test_dir, "simple_test.ql")
+        
+        if os.path.exists(query_file):
+            result = subprocess.run(
+                ["codeql", "query", "compile", query_file, "--precompile"],
+                capture_output=True,
+                text=True,
+                cwd=test_dir
+            )
+            
+            if result.returncode == 0:
+                print(f"[SETUP] Queries precompiled successfully")
+    
+    return os.path.abspath(db_path)
+
+
 @pytest.fixture(autouse=True)
 def reset_cache():
     """Reset global caches before each test"""
