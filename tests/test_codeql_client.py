@@ -325,10 +325,11 @@ select mtc
             str(query_file), "MyTestClass"
         )
 
-        assert start_line == 4  # Line with class definition
+        assert start_line == 4
         assert start_col > 0
         assert end_line == 4
         assert end_col > start_col
+        assert end_col == start_col + len("MyTestClass")
 
     def test_find_class_not_found(self, tmp_path):
         """Test error when class not found"""
@@ -380,28 +381,30 @@ boolean myPredicate(Node n) {
 
 
 class TestBqrsDecoding:
-    @patch('subprocess.run')
-    @patch('os.path.exists')
-    def test_decode_bqrs_json(self, mock_exists, mock_run):
+    def test_decode_bqrs_json(self, tmp_path):
         """Test BQRS decoding to JSON"""
-        mock_exists.return_value = True
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout='{"results": [{"column": "value"}]}'
-        )
+        bqrs_file = tmp_path / "test.bqrs"
+        bqrs_file.write_bytes(b"fake bqrs content")
 
         server = CodeQLQueryServer()
-        result = server.decode_bqrs("/path/to/results.bqrs", "json")
-
-        assert '{"results": [{"column": "value"}]}' in result
-        mock_run.assert_called_once()
-
-        # Verify command structure
-        cmd = mock_run.call_args[0][0]
-        assert "bqrs" in cmd
-        assert "decode" in cmd
-        assert "--format" in cmd
-        assert "json" in cmd
+        
+        import subprocess
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout='{"#select": {"tuples": [{"col": "val"}]}}'
+            )
+            
+            result = server.decode_bqrs(str(bqrs_file), "json")
+            
+            assert result is not None
+            assert "tuples" in result or "results" in result
+            
+            cmd = mock_run.call_args[0][0]
+            assert "codeql" in cmd[0]
+            assert "bqrs" in cmd
+            assert "decode" in cmd
+            assert "--format=json" in cmd or "json" in cmd
 
     @patch('subprocess.run')
     @patch('os.path.exists')
@@ -427,19 +430,22 @@ class TestBqrsDecoding:
         with pytest.raises(FileNotFoundError):
             server.decode_bqrs("/nonexistent.bqrs")
 
-    @patch('subprocess.run')
-    @patch('os.path.exists')
-    def test_decode_bqrs_command_failure(self, mock_exists, mock_run):
+    def test_decode_bqrs_command_failure(self, tmp_path):
         """Test error when decode command fails"""
-        mock_exists.return_value = True
-        mock_run.return_value = MagicMock(
-            returncode=1,
-            stderr="Decode failed"
-        )
+        bqrs_file = tmp_path / "test.bqrs"
+        bqrs_file.write_bytes(b"fake bqrs content")
 
         server = CodeQLQueryServer()
-        with pytest.raises(RuntimeError, match="Failed to decode BQRS"):
-            server.decode_bqrs("/path/to/results.bqrs")
+        
+        import subprocess
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=1,
+                stderr="Decode failed"
+            )
+            
+            with pytest.raises(RuntimeError, match="Failed to decode BQRS"):
+                server.decode_bqrs(str(bqrs_file))
 
 
 class TestCallbackHelpers:
