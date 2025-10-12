@@ -120,13 +120,10 @@ class TestEndToEndIntegration:
             {"language": "python", "vulnerability_type": "sql_injection"}
         )
 
-        try:
-            security_queries = json.loads(security_result.content[0].text)
-            assert isinstance(security_queries, dict)
-            if "sql_injection" in security_queries:
-                assert isinstance(security_queries["sql_injection"], list)
-        except json.JSONDecodeError:
-            pass
+        security_queries = json.loads(security_result.content[0].text)
+        assert isinstance(security_queries, dict)
+        if "sql_injection" in security_queries:
+            assert isinstance(security_queries["sql_injection"], list)
 
     @pytest.mark.asyncio
     async def test_multi_language_support(self, mcp_client):
