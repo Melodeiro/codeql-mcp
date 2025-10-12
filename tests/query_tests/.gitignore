@@ -1,3 +1,4 @@
 "test_db/"  
 "*.bqrs"  
-"*.testproj/" 
+"*.testproj/"
+test_db/diagnostic/*.json

@@ -1,8 +1,11 @@
 """Database operations: creation, registration, and metadata retrieval"""
 
 import subprocess
+import logging
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 # Cache for database info to avoid repeated calls
 db_info_cache = {}
@@ -29,7 +32,7 @@ def register_database_impl(qs, db_path: str) -> str:
     qs.register_databases(
         [db_path],
         callback=callback,
-        progress_callback=lambda msg: print("[progress] register:", msg),
+        progress_callback=lambda msg: logger.debug("register progress: %s", msg),
     )
     done.wait()
     return f"Database registered: {db_path}"
@@ -84,29 +87,20 @@ def get_database_info_impl(qs, db_path: str) -> dict:
         if result.returncode != 0:
             return {"error": f"Failed to get database info: {result.stderr}"}
 
-        # Parse the output to extract language
+        # Parse JSON output from codeql resolve database
+        import json
+        db_data = json.loads(result.stdout)
+        
+        # Extract language from languages array
+        # codeql resolve database ALWAYS returns JSON with "languages": [...]
+        language = None
+        if "languages" in db_data and isinstance(db_data["languages"], list):
+            language = db_data["languages"][0] if db_data["languages"] else None
+        
         info = {
             "path": db_path_str,
-            "language": None
+            "language": language
         }
-
-        # The output format is typically: "language: <lang>" or similar
-        for line in result.stdout.split('\n'):
-            line = line.strip()
-            if line:
-                # Try to extract language from the output
-                if 'language' in line.lower() or ':' in line:
-                    parts = line.split(':')
-                    if len(parts) == 2:
-                        key = parts[0].strip().lower()
-                        value = parts[1].strip()
-                        if 'language' in key:
-                            info['language'] = value
-                        else:
-                            info[parts[0].strip()] = value
-                elif not info['language']:
-                    # Sometimes the output is just the language name
-                    info['language'] = line
 
         # Get baseline info for statistics
         baseline_result = subprocess.run(

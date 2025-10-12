@@ -1,7 +1,11 @@
 """Query validation utilities"""
 
 import subprocess
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 
 def validate_query_file(query_path: str) -> dict:
@@ -48,7 +52,7 @@ def validate_query_syntax(query_path: str, codeql_path: str, timeout: int = 30) 
         
     except subprocess.TimeoutExpired:
         return {"valid": False, "error": "Query validation timed out (complex query or system issue)"}
+    except FileNotFoundError:
+        return {"valid": False, "error": f"CodeQL CLI not found at: {codeql_path}"}
     except Exception as e:
-        # Non-critical: log warning but don't fail
-        print(f"[Warning] Pre-validation failed: {e}")
-        return {"valid": True, "error": None}  # Continue to evaluation
+        return {"valid": False, "error": f"Query validation error: {str(e)}"}

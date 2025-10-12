@@ -89,8 +89,8 @@ select INVALID_SYNTAX
         
         result = validate_query_syntax(str(query_file), "/nonexistent/codeql")
         
-        assert result["valid"] is True
-        assert result["error"] is None
+        assert result["valid"] is False
+        assert "not found" in result["error"].lower()
 
 
 if __name__ == "__main__":

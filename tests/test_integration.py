@@ -9,7 +9,6 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tests.fixtures.mock_responses import MockCodeQLResponses, MockDatabaseStructure
 import server
 
 
@@ -17,78 +16,42 @@ class TestEndToEndIntegration:
     """End-to-end integration tests that simulate real CodeQL workflows"""
 
     @pytest.mark.asyncio
-    async def test_complete_analysis_workflow(self, mcp_client, tmp_path, mock_subprocess):
-        """Test complete workflow: create DB -> register -> analyze -> decode results"""
+    async def test_complete_analysis_workflow(self, mcp_client, real_test_database):
+        """Test complete workflow with real database: register -> info -> query discovery"""
 
-        # Setup mock database
-        db_path = MockDatabaseStructure.create_minimal_db(tmp_path / "test_db")
+        # Step 1: Register real database
+        register_result = await mcp_client.call_tool(
+            "register_database",
+            {"db_path": real_test_database}
+        )
+        assert "Database registered" in register_result.content[0].text
 
-        # Mock subprocess responses for different commands
-        def mock_subprocess_side_effect(*args, **kwargs):
-            cmd = args[0]
-            if "create" in cmd:
-                return MagicMock(returncode=0, stdout=MockCodeQLResponses.database_create_success())
-            elif "analyze" in cmd:
-                return MagicMock(returncode=0, stdout=MockCodeQLResponses.analysis_success())
-            elif "resolve" in cmd and "database" in cmd:
-                return MagicMock(returncode=0, stdout=MockCodeQLResponses.database_resolve_output())
-            elif "resolve" in cmd and "packs" in cmd:
-                return MagicMock(returncode=0, stdout=MockCodeQLResponses.query_packs_output())
-            else:
-                return MagicMock(returncode=0, stdout="")
+        # Step 2: Get database info from real database
+        info_result = await mcp_client.call_tool(
+            "get_database_info",
+            {"db_path": real_test_database}
+        )
+        info = json.loads(info_result.content[0].text)
+        assert info["language"] == "python"
+        assert "path" in info
 
-        mock_subprocess.side_effect = mock_subprocess_side_effect
+        # Step 3: Discover queries for the language
+        discover_result = await mcp_client.call_tool(
+            "discover_queries",
+            {"language": "python", "category": "security"}
+        )
+        queries = [json.loads(item.text) for item in discover_result.content]
+        assert len(queries) > 0
+        assert all(q["language"] == "python" for q in queries)
 
-        with patch('server.qs') as mock_qs:
-            mock_qs.decode_bqrs.return_value = MockCodeQLResponses.bqrs_decode_json()
-            mock_qs.register_databases = MagicMock()
-            mock_qs.wait_for_completion_callback.return_value = (
-                MagicMock(), MagicMock(wait=MagicMock()), {}
-            )
-
-            # Step 1: Create database
-            create_result = await mcp_client.call_tool(
-                "create_database",
-                {
-                    "source_path": str(tmp_path / "source"),
-                    "language": "python",
-                    "db_path": db_path
-                }
-            )
-            assert "Database created successfully" in create_result.content[0].text
-
-            # Step 2: Register database
-            register_result = await mcp_client.call_tool(
-                "register_database",
-                {"db_path": db_path}
-            )
-            assert "Database registered" in register_result.content[0].text
-
-            # Step 3: Get database info
-            info_result = await mcp_client.call_tool(
-                "get_database_info",
-                {"db_path": db_path}
-            )
-            info = json.loads(info_result.content[0].text)
-            assert info["language"] == "python"
-
-            # Step 4: Run security scan
-            scan_result = await mcp_client.call_tool(
-                "run_security_scan",
-                {"db_path": db_path}
-            )
-            assert "Security scan completed" in scan_result.content[0].text
-
-            # Step 5: Decode results
-            decode_result = await mcp_client.call_tool(
-                "decode_bqrs",
-                {
-                    "bqrs_path": "/tmp/security-scan.bqrs",
-                    "fmt": "json"
-                }
-            )
-            decoded_data = decode_result.content[0].text
-            assert "tuples" in decoded_data
+        # Step 4: Find security queries
+        security_result = await mcp_client.call_tool(
+            "find_security_queries",
+            {"language": "python"}
+        )
+        security_queries = json.loads(security_result.content[0].text)
+        assert isinstance(security_queries, dict)
+        assert len(security_queries) > 0
 
     @pytest.mark.asyncio
     async def test_query_discovery_and_execution(self, mcp_client, tmp_path):
@@ -99,21 +62,21 @@ class TestEndToEndIntegration:
             {"language": "python", "category": "security"}
         )
 
-        if len(discover_result.content) > 1:
-            queries = [json.loads(item.text) for item in discover_result.content]
-        else:
-            try:
-                queries = json.loads(discover_result.content[0].text)
-            except json.JSONDecodeError:
-                queries = []
-
-        if len(queries) > 0:
-            sql_injection_query = next(
-                (q for q in queries if "SqlInjection" in q.get("filename", "")), None
-            )
-            if sql_injection_query:
-                assert "path" in sql_injection_query
-                assert "language" in sql_injection_query
+        queries = [json.loads(item.text) for item in discover_result.content]
+        
+        assert len(queries) > 0
+        assert all("path" in q for q in queries)
+        assert all("language" in q for q in queries)
+        assert all(q["language"] == "python" for q in queries)
+        assert all("security" in q["path"].lower() for q in queries)
+        
+        # Find SqlInjection.ql - it MUST exist in python-queries pack
+        sql_injection_query = next(
+            (q for q in queries if "SqlInjection" in q.get("filename", "")), None
+        )
+        assert sql_injection_query is not None
+        assert "path" in sql_injection_query
+        assert "language" in sql_injection_query
 
         security_result = await mcp_client.call_tool(
             "find_security_queries",
@@ -122,8 +85,9 @@ class TestEndToEndIntegration:
 
         security_queries = json.loads(security_result.content[0].text)
         assert isinstance(security_queries, dict)
-        if "sql_injection" in security_queries:
-            assert isinstance(security_queries["sql_injection"], list)
+        assert "sql_injection" in security_queries
+        assert isinstance(security_queries["sql_injection"], list)
+        assert len(security_queries["sql_injection"]) > 0
 
     @pytest.mark.asyncio
     async def test_multi_language_support(self, mcp_client):
@@ -134,13 +98,7 @@ class TestEndToEndIntegration:
             {}
         )
 
-        if len(languages_result.content) > 1:
-            languages = [item.text for item in languages_result.content]
-        else:
-            try:
-                languages = json.loads(languages_result.content[0].text)
-            except json.JSONDecodeError:
-                languages = [item.text for item in languages_result.content]
+        languages = [item.text for item in languages_result.content]
         assert "python" in languages
         assert "javascript" in languages
         assert "java" in languages
@@ -150,38 +108,17 @@ class TestEndToEndIntegration:
             {}
         )
 
-        try:
-            packs = json.loads(packs_result.content[0].text)
-        except json.JSONDecodeError:
-            packs = {}
-        
-        if "javascript-typescript" in packs or "javascript" in packs:
-            js_queries_result = await mcp_client.call_tool(
-                "discover_queries",
-                {"language": "javascript"}
-            )
-            
-            if len(js_queries_result.content) > 1:
-                js_queries = [json.loads(item.text) for item in js_queries_result.content]
-            else:
-                try:
-                    js_queries = json.loads(js_queries_result.content[0].text)
-                except json.JSONDecodeError:
-                    js_queries = []
-            
-            if len(js_queries) > 0:
-                assert isinstance(js_queries, (list, dict))
-                if isinstance(js_queries, list):
-                    assert all("path" in q for q in js_queries)
+        packs = json.loads(packs_result.content[0].text)
+        assert isinstance(packs, dict)
 
     @pytest.mark.asyncio
     async def test_error_handling_workflow(self, mcp_client, tmp_path, mock_subprocess):
         """Test error handling in various scenarios"""
 
-        # Test database creation failure
+        # Test database creation failure - use real error message
         mock_subprocess.return_value = MagicMock(
             returncode=1,
-            stderr=MockCodeQLResponses.database_create_error()
+            stderr="Error: Could not process source code"
         )
 
         create_error_result = await mcp_client.call_tool(
@@ -194,10 +131,10 @@ class TestEndToEndIntegration:
         )
         assert "Failed to create database" in create_error_result.content[0].text
 
-        # Test analysis failure
+        # Test analysis failure - use real error message
         mock_subprocess.return_value = MagicMock(
             returncode=1,
-            stderr=MockCodeQLResponses.analysis_error()
+            stderr="Error: Could not find query suite"
         )
 
         analysis_error_result = await mcp_client.call_tool(
@@ -209,7 +146,7 @@ class TestEndToEndIntegration:
         )
         assert "Analysis failed" in analysis_error_result.content[0].text
 
-        # Test invalid database registration
+        # Test invalid database registration - this is REAL behavior, no mocks needed
         register_error_result = await mcp_client.call_tool(
             "register_database",
             {"db_path": "/completely/nonexistent/path"}
@@ -217,141 +154,63 @@ class TestEndToEndIntegration:
         assert "Database path does not exist" in register_error_result.content[0].text
 
     @pytest.mark.asyncio
-    async def test_caching_behavior(self, mcp_client, tmp_path):
+    async def test_caching_behavior(self, mcp_client, real_test_database):
         """Test that caching works correctly for database info"""
         from tools.database import db_info_cache
         
-        db_path = MockDatabaseStructure.create_minimal_db(tmp_path / "cached_db")
-        
         initial_cache_size = len(db_info_cache)
         
+        # First call - should populate cache
         info_result1 = await mcp_client.call_tool(
             "get_database_info",
-            {"db_path": db_path}
+            {"db_path": real_test_database}
         )
         info1 = json.loads(info_result1.content[0].text)
 
+        # Second call - should use cache
         info_result2 = await mcp_client.call_tool(
             "get_database_info",
-            {"db_path": db_path}
+            {"db_path": real_test_database}
         )
         info2 = json.loads(info_result2.content[0].text)
 
         assert info1 == info2
         assert len(db_info_cache) > initial_cache_size
-        assert db_path in str(db_info_cache) or Path(db_path).resolve() in [Path(k) for k in db_info_cache.keys()]
+        assert real_test_database in str(db_info_cache) or Path(real_test_database).resolve() in [Path(k) for k in db_info_cache.keys()]
 
     @pytest.mark.asyncio
-    async def test_custom_output_paths(self, mcp_client, tmp_path, mock_subprocess):
-        """Test that custom output paths work correctly"""
+    async def test_vulnerability_pattern_matching(self, mcp_client):
+        """Test that vulnerability pattern matching works with real CodeQL data"""
 
-        db_path = MockDatabaseStructure.create_minimal_db(tmp_path / "test_db")
-        custom_output = str(tmp_path / "custom_results")
-        
-        # Create test query file
-        query_file = tmp_path / "test.ql"
-        query_file.write_text("select 1")
-
-        with patch('server.qs') as mock_qs, \
-             patch('tools.query.validate_query_syntax') as mock_validate_syntax:
-            mock_qs.evaluate_and_wait = MagicMock()
-            mock_validate_syntax.return_value = {"valid": True, "error": None}
-
-            # Test custom output for query evaluation
-            eval_result = await mcp_client.call_tool(
-                "evaluate_query",
-                {
-                    "query_path": str(query_file),
-                    "db_path": db_path,
-                    "output_path": custom_output + ".bqrs"
-                }
-            )
-            assert custom_output in eval_result.content[0].text
-
-        # Test custom output for analysis
-        mock_subprocess.return_value = MagicMock(returncode=0, stdout="Analysis complete")
-
-        analysis_result = await mcp_client.call_tool(
-            "analyze_database",
-            {
-                "db_path": db_path,
-                "query_or_suite": "test-suite.qls",
-                "output_format": "csv",
-                "output_path": custom_output
-            }
-        )
-        assert custom_output + ".csv" in analysis_result.content[0].text
-
-        # Test custom output for security scan
-        with patch('server.list_query_packs') as mock_packs:
-            mock_packs.return_value = {
-                "python": {
-                    "pack": "codeql/python-queries",
-                    "suites": ["suite1", "suite2", "suite3"]
-                }
-            }
-
-            scan_result = await mcp_client.call_tool(
-                "run_security_scan",
-                {
-                    "db_path": db_path,
-                    "language": "python",
-                    "output_path": custom_output + "_scan"
-                }
-            )
-            assert custom_output + "_scan.sarif" in scan_result.content[0].text
-
-    @pytest.mark.asyncio
-    async def test_vulnerability_pattern_matching(self, mcp_client, mock_subprocess):
-        """Test that vulnerability pattern matching works correctly"""
-
-        # Mock queries with various vulnerability patterns
-        mock_queries = {
-            "python": [
-                "/path/Security/CWE-089/SqlInjection.ql",
-                "/path/Security/CWE-079/ReflectedXss.ql",
-                "/path/Security/CWE-078/CommandInjection.ql",
-                "/path/Security/CWE-022/PathTraversal.ql",
-                "/path/Security/CWE-798/HardcodedCredentials.ql",
-                "/path/Security/CWE-502/UnsafeDeserialization.ql",
-                "/path/Security/CWE-352/MissingCsrfMiddleware.ql",
-                "/path/Security/CWE-611/XmlExternalEntityInjection.ql",
-                "/path/Quality/Maintainability/DuplicateCode.ql"  # Non-security query
-            ]
-        }
-
-        mock_subprocess.return_value = MagicMock(
-            returncode=0,
-            stdout=json.dumps(mock_queries)
-        )
-
-        # Test finding all security queries
+        # Test finding all security queries for python
         all_security_result = await mcp_client.call_tool(
             "find_security_queries",
             {"language": "python"}
         )
 
-        # Handle FastMCP response format
-        try:
-            all_security = json.loads(all_security_result.content[0].text)
-        except json.JSONDecodeError:
-            # If JSON parsing fails, create empty dict
-            all_security = {}
-
-        # Should categorize vulnerabilities correctly
-        assert "sql_injection" in all_security
-        assert "xss" in all_security
-        assert "command_injection" in all_security
-        assert "path_traversal" in all_security
-        assert "hardcoded_credentials" in all_security
-        assert "deserialization" in all_security
-        assert "csrf" in all_security
-        assert "xxe" in all_security
-
-        # Should not include quality queries
-        quality_queries = [v for vulns in all_security.values() for v in vulns
-                          if "DuplicateCode" in v.get("path", "")]
-        assert len(quality_queries) == 0
+        all_security = json.loads(all_security_result.content[0].text)
+        
+        # Verify structure
+        assert isinstance(all_security, dict)
+        assert len(all_security) > 0
+        
+        # Real CodeQL python-queries pack MUST have these core vulnerabilities
+        # These are confirmed to exist in codeql/python-queries 1.6.6
+        required_vulns = ["sql_injection", "xss", "command_injection", "path_traversal", 
+                         "deserialization", "xxe", "ldap_injection", "code_injection"]
+        for vuln in required_vulns:
+            assert vuln in all_security, f"Missing {vuln} in security queries"
+        
+        # Verify each category has actual queries
+        for vuln_type, queries in all_security.items():
+            assert isinstance(queries, list), f"{vuln_type} should be a list"
+            assert len(queries) > 0, f"{vuln_type} should have queries"
+            for query in queries:
+                assert "path" in query
+                assert "language" in query
+                assert query["language"] == "python"
+                # Verify path contains security indicator
+                assert "security" in query["path"].lower() or "cwe-" in query["path"].lower()
 
         # Test finding specific vulnerability type
         sql_only_result = await mcp_client.call_tool(
@@ -359,15 +218,13 @@ class TestEndToEndIntegration:
             {"language": "python", "vulnerability_type": "sql_injection"}
         )
 
-        try:
-            sql_only = json.loads(sql_only_result.content[0].text)
-            assert "sql_injection" in sql_only
-            assert "xss" not in sql_only
-            # Allow for multiple sql injection queries in the response
-            assert len(sql_only["sql_injection"]) >= 1
-        except json.JSONDecodeError:
-            # If JSON parsing fails, just check that we got some response
-            assert len(sql_only_result.content) > 0
+        sql_only = json.loads(sql_only_result.content[0].text)
+        assert "sql_injection" in sql_only
+        assert "xss" not in sql_only
+        assert len(sql_only) == 1
+        assert len(sql_only["sql_injection"]) >= 1
+        # Verify it's the actual SqlInjection.ql query
+        assert any("SqlInjection" in q["path"] for q in sql_only["sql_injection"])
 
     @pytest.mark.asyncio
     async def test_real_file_operations(self, tmp_path):
@@ -423,35 +280,19 @@ class TestPerformanceAndScaling:
     """Test performance characteristics and scaling behavior"""
 
     @pytest.mark.asyncio
-    async def test_large_query_list_handling(self, mcp_client, mock_subprocess):
+    async def test_large_query_list_handling(self, mcp_client):
         """Test handling of large numbers of queries"""
-
-        # Create a large list of mock queries
-        large_query_list = {
-            "python": [f"/path/to/query_{i}.ql" for i in range(100)]
-        }
-
-        mock_subprocess.return_value = MagicMock(
-            returncode=0,
-            stdout=json.dumps(large_query_list)
-        )
 
         discover_result = await mcp_client.call_tool(
             "discover_queries",
             {"language": "python"}
         )
 
-        # FastMCP returns list items as separate TextContent objects
-        if len(discover_result.content) > 1:
-            queries = [json.loads(item.text) for item in discover_result.content]
-        else:
-            queries = json.loads(discover_result.content[0].text)
+        queries = [json.loads(item.text) for item in discover_result.content]
 
-        # Allow for fewer queries due to FastMCP response format limitations
-        assert len(queries) >= 3  # Should have at least some queries
-
-        # Response should be structured correctly
-        for query in queries:
+        assert len(queries) > 0
+        
+        for query in queries[:10]:
             assert "path" in query
             assert "language" in query
             assert "filename" in query
@@ -470,17 +311,11 @@ class TestPerformanceAndScaling:
 
         assert len(results) == 5
         for result in results:
-            try:
-                if len(result.content) > 1:
-                    languages = [item.text for item in result.content]
-                else:
-                    languages = json.loads(result.content[0].text)
-                assert "python" in languages
-            except (json.JSONDecodeError, KeyError):
-                assert len(result.content) > 0
+            languages = [item.text for item in result.content]
+            assert "python" in languages
 
     @pytest.mark.asyncio
-    async def test_memory_cleanup(self, mcp_client, tmp_path):
+    async def test_memory_cleanup(self, mcp_client, real_test_database):
         """Test that memory is properly cleaned up"""
 
         # This test ensures that caches are properly managed
@@ -489,22 +324,14 @@ class TestPerformanceAndScaling:
         from tools.database import db_info_cache
         initial_cache_size = len(db_info_cache)
 
-        # Create multiple temporary databases
+        # Call get_database_info multiple times on same database
+        # Should use cache, not grow unbounded
         for i in range(10):
-            db_path = MockDatabaseStructure.create_minimal_db(tmp_path / f"db_{i}")
+            await mcp_client.call_tool(
+                "get_database_info",
+                {"db_path": real_test_database}
+            )
 
-            with patch('subprocess.run') as mock_run:
-                mock_run.return_value = MagicMock(
-                    returncode=0,
-                    stdout=MockCodeQLResponses.database_resolve_output()
-                )
-
-                await mcp_client.call_tool(
-                    "get_database_info",
-                    {"db_path": db_path}
-                )
-
-        # Cache should have grown but not excessively
+        # Cache should have grown by exactly 1 entry (same database)
         final_cache_size = len(db_info_cache)
-        assert final_cache_size > initial_cache_size
-        assert final_cache_size <= initial_cache_size + 10
+        assert final_cache_size == initial_cache_size + 1

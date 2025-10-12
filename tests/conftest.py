@@ -272,7 +272,7 @@ def real_test_database():
 
 @pytest.fixture(autouse=True)
 def reset_cache():
-    """Reset global caches before each test"""
+    """Reset global caches before each test for proper isolation"""
     from tools.database import db_info_cache
     db_info_cache.clear()
     yield

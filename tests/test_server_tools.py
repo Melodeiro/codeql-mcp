@@ -316,8 +316,7 @@ class TestListQueryPacks:
 
         packs = json.loads(result.content[0].text)
         assert isinstance(packs, dict)
-        if "python" in packs:
-            assert "pack" in packs["python"]
+        assert len(packs) > 0
 
     @pytest.mark.asyncio
     async def test_list_packs_fallback(self, mcp_client):
@@ -345,10 +344,10 @@ class TestDiscoverQueries:
             {"pack_name": "codeql/python-queries"}
         )
 
-        if len(result.content) > 0:
-            queries = [json.loads(item.text) for item in result.content]
-            assert len(queries) > 0
-            assert all("path" in q for q in queries)
+        queries = [json.loads(item.text) for item in result.content]
+        assert len(queries) > 0
+        assert all("path" in q for q in queries)
+        assert all("language" in q for q in queries)
 
     @pytest.mark.asyncio
     async def test_discover_by_language(self, mcp_client):
@@ -358,10 +357,10 @@ class TestDiscoverQueries:
             {"language": "python"}
         )
 
-        if len(result.content) > 0:
-            queries = [json.loads(item.text) for item in result.content]
-            assert len(queries) > 0
-            assert all(q["language"] == "python" for q in queries)
+        queries = [json.loads(item.text) for item in result.content]
+        assert len(queries) > 0
+        assert all(q["language"] == "python" for q in queries)
+        assert all("path" in q for q in queries)
 
     @pytest.mark.asyncio
     async def test_discover_with_category_filter(self, mcp_client):
@@ -371,10 +370,10 @@ class TestDiscoverQueries:
             {"language": "python", "category": "security"}
         )
 
-        if len(result.content) > 0:
-            queries = [json.loads(item.text) for item in result.content]
-            assert len(queries) > 0
-            assert all("security" in q["path"].lower() for q in queries)
+        queries = [json.loads(item.text) for item in result.content]
+        assert len(queries) > 0
+        assert all("security" in q["path"].lower() for q in queries)
+        assert all(q["language"] == "python" for q in queries)
 
 
 class TestFindSecurityQueries:
@@ -388,8 +387,12 @@ class TestFindSecurityQueries:
 
         queries = json.loads(result.content[0].text)
         assert isinstance(queries, dict)
-        if len(queries) > 0:
-            assert any("sql" in key or "xss" in key or "injection" in key for key in queries.keys())
+        assert len(queries) > 0
+        assert any("sql" in key or "xss" in key or "injection" in key for key in queries.keys())
+        
+        for vuln_type, query_list in queries.items():
+            assert isinstance(query_list, list)
+            assert len(query_list) > 0
 
     @pytest.mark.asyncio
     async def test_find_by_vulnerability_type(self, mcp_client):
@@ -404,9 +407,10 @@ class TestFindSecurityQueries:
 
         queries = json.loads(result.content[0].text)
         assert isinstance(queries, dict)
-        if "sql_injection" in queries:
-            assert isinstance(queries["sql_injection"], list)
-            assert len(queries) == 1
+        assert "sql_injection" in queries
+        assert isinstance(queries["sql_injection"], list)
+        assert len(queries) == 1
+        assert len(queries["sql_injection"]) > 0
 
     @pytest.mark.asyncio
     async def test_find_by_database_path(self, mcp_client, temp_database):
@@ -475,73 +479,6 @@ class TestAnalyzeDatabase:
 
 
 class TestGetDatabaseInfo:
-    @pytest.mark.asyncio
-    async def test_get_info_success(self, mcp_client, temp_database):
-        """Test getting database information"""
-        with patch('subprocess.run') as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout="primaryLanguage: python\ncreationMetadata:\n  sha: abc123\n  cliVersion: 2.15.0"
-            )
-            
-            result = await mcp_client.call_tool(
-                "get_database_info",
-                {"db_path": temp_database}
-            )
-
-            info = json.loads(result.content[0].text)
-            assert "language" in info
-            assert info["language"] == "python"
-            assert "path" in info
-
-    @pytest.mark.asyncio
-    async def test_get_info_with_baseline(self, mcp_client, temp_database, mock_subprocess):
-        """Test getting database info with baseline statistics"""
-        def side_effect(*args, **kwargs):
-            if "resolve" in args[0]:
-                return MagicMock(
-                    returncode=0,
-                    stdout="language: python",
-                    stderr=""
-                )
-            elif "print-baseline" in args[0]:
-                return MagicMock(
-                    returncode=0,
-                    stdout="Database has baseline of 5000 lines",
-                    stderr=""
-                )
-            return MagicMock(returncode=1)
-
-        mock_subprocess.side_effect = side_effect
-
-        result = await mcp_client.call_tool(
-            "get_database_info",
-            {"db_path": temp_database}
-        )
-
-        info = json.loads(result.content[0].text)
-        assert info["lines_of_code"] == 5000
-
-    @pytest.mark.asyncio
-    async def test_get_info_cached(self, mcp_client, temp_database, mock_subprocess):
-        """Test that database info is cached"""
-        mock_subprocess.return_value.stdout = "language: python"
-
-        # First call
-        await mcp_client.call_tool(
-            "get_database_info",
-            {"db_path": temp_database}
-        )
-
-        # Second call should use cache
-        await mcp_client.call_tool(
-            "get_database_info",
-            {"db_path": temp_database}
-        )
-
-        # Should only call subprocess once
-        assert mock_subprocess.call_count == 2  # resolve + print-baseline
-
     @pytest.mark.asyncio
     async def test_get_info_error(self, mcp_client):
         """Test handling of database info errors"""

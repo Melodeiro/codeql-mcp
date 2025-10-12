@@ -135,7 +135,7 @@ def discover_queries_impl(qs, pack_name: str = None, language: str = None, categ
 
         queries = []
         for extractor, query_data in data.items():
-            # query_data is now a dict of {query_path: metadata}
+            # query_data is dict: {"path/to/query.ql": {metadata}, ...}
             for query_path in query_data.keys():
                 query_info = {
                     "path": query_path,
@@ -143,7 +143,6 @@ def discover_queries_impl(qs, pack_name: str = None, language: str = None, categ
                     "filename": Path(query_path).name
                 }
 
-                # Filter by category if specified
                 if category:
                     if category.lower() in query_path.lower():
                         queries.append(query_info)
