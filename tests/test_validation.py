@@ -42,27 +42,17 @@ class TestValidateQueryFile:
 
 
 class TestValidateQuerySyntax:
-    def test_valid_query_syntax(self, tmp_path):
-        """Test syntax validation requires qlpack.yml and query packs"""
-        qlpack_file = tmp_path / "qlpack.yml"
-        qlpack_file.write_text("""name: test-pack
-version: 0.0.0
-dependencies:
-  codeql/python-all: "*"
-""")
+    def test_valid_query_syntax(self):
+        """Test syntax validation with pre-configured pack"""
+        import os
+        import shutil
         
-        query_file = tmp_path / "valid.ql"
-        query_file.write_text("""import python
-
-from Module m
-select m
-""")
+        # Use existing query_tests pack with lock file already committed
+        test_pack_dir = os.path.join(os.path.dirname(__file__), "query_tests")
+        query_file = os.path.join(test_pack_dir, "simple_test.ql")
         
-        result = validate_query_syntax(str(query_file), "codeql")
-        
-        error_str = str(result.get("error", "")).lower()
-        if "dbscheme" in error_str or "could not resolve" in error_str:
-            pytest.skip("Query packs not installed, cannot validate syntax")
+        # This pack has qlpack.yml and codeql-pack.lock.yml already configured
+        result = validate_query_syntax(query_file, "codeql")
         
         assert result["valid"] is True
         assert result["error"] is None

@@ -129,9 +129,14 @@ def discover_queries_impl(qs, pack_name: str = None, language: str = None, categ
 
         data = json.loads(result.stdout)
 
+        # Handle bylanguage format: {"byLanguage": {"python": {"path/to/query.ql": {}, ...}}}
+        if "byLanguage" in data:
+            data = data["byLanguage"]
+
         queries = []
-        for extractor, query_list in data.items():
-            for query_path in query_list:
+        for extractor, query_data in data.items():
+            # query_data is now a dict of {query_path: metadata}
+            for query_path in query_data.keys():
                 query_info = {
                     "path": query_path,
                     "language": extractor,
