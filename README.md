@@ -7,24 +7,24 @@ A Model Context Protocol (MCP) server that wraps the CodeQL CLI and query server
 ## ✨ Features
 
 ### Database Management
-- ✅ Create CodeQL databases from source code
-- ✅ Register databases with query server
-- ✅ Retrieve database metadata and statistics
+- Create CodeQL databases from source code
+- Register databases with query server
+- Retrieve database metadata and statistics
 
 ### Query Execution
-- ✅ Run full CodeQL queries
-- ✅ Quick-evaluate individual predicates/classes (10-100x faster)
-- ✅ Decode binary `.bqrs` results to JSON/CSV/text
+- Run full CodeQL queries
+- Quick-evaluate individual predicates/classes (10-100x faster)
+- Decode binary `.bqrs` results to JSON/CSV/text
 
 ### Security Analysis
-- ✅ Discover security queries by language and vulnerability type
-- ✅ Run comprehensive security scans with pre-configured suites
-- ✅ Generate SARIF reports for CI/CD integration
+- Discover security queries by language and vulnerability type
+- Run comprehensive security scans with pre-configured suites
+- Generate SARIF reports for CI/CD integration
 
 ### Query Discovery
-- ✅ List supported languages and query packs
-- ✅ Discover available queries by category
-- ✅ Find specific vulnerability detection queries
+- List supported languages and query packs
+- Discover available queries by category
+- Find specific vulnerability detection queries
 
 ---
 
@@ -48,12 +48,6 @@ codeql-mcp/
     ├── test_codeql_client.py
     └── test_integration.py
 ```
-
-### Architecture Benefits
-- **Modular**: Business logic separated into focused modules
-- **Maintainable**: 12 MCP tools with clear separation of concerns
-- **Testable**: All 36 tests passing with proper mocks
-- **MCP-compliant**: Tool docstrings remain in server.py as required
 
 ---
 
@@ -137,44 +131,10 @@ uv run pytest tests/test_server_tools.py -v
 uv run pytest --cov=server --cov=tools --cov=validation
 ```
 
-**Current Status**: ✅ All 36 tests passing
-
 ---
 
-## 📝 Development Notes
-
-### For AI Agents/Cursor Users
-- Tools are invoked via natural language
-- Specify query locations, output paths, and database paths in prompts
-- Use `test_predicate` for faster query development iteration
-- Use `decode_bqrs` to read query results
-
-### For Developers
-- **Adding new tools**: 
-  1. Create implementation in appropriate `tools/*.py` module
-  2. Export from `tools/__init__.py`
-  3. Add MCP wrapper with docstring in `server.py`
-  4. Add tests in `tests/test_server_tools.py`
-
-- **Docstrings**: Must remain in `server.py` for MCP protocol compliance
-- **Business Logic**: Should be in `tools/` modules for testability
-- **Validation**: Use functions from `validation.py` for query checks
-
----
-
-## 📚 Additional Resources
+## 📚 Resources
 
 - [CodeQL Documentation](https://codeql.github.com/docs/)
 - [Model Context Protocol](https://modelcontextprotocol.io/)
 - [FastMCP Framework](https://github.com/jlowin/fastmcp)
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass (`uv run pytest`)
-5. Submit a pull request
-

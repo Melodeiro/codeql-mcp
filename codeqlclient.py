@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import time
 import re
 import os
@@ -7,6 +9,8 @@ import threading
 import uuid
 import logging
 from pathlib import Path
+from typing import Any, Callable
+from collections.abc import Callable as CallableABC
 
 # Set up logger for this module
 logger = logging.getLogger(__name__)
@@ -14,17 +18,17 @@ logger.addHandler(logging.NullHandler())
 
 
 class CodeQLQueryServer:
-    def __init__(self, codeql_path="codeql"):
-        self.codeql_path = codeql_path
-        self.proc = None
-        self.reader_thread = None
-        self.pending = {}
-        self.running = True
-        self.id_counter = 1
-        self.progress_id = 0
-        self.progress_callbacks = {}
+    def __init__(self, codeql_path: str = "codeql") -> None:
+        self.codeql_path: str = codeql_path
+        self.proc: subprocess.Popen[str] | None = None
+        self.reader_thread: threading.Thread | None = None
+        self.pending: dict[int, tuple[CallableABC[[Any], None], int | None]] = {}
+        self.running: bool = True
+        self.id_counter: int = 1
+        self.progress_id: int = 0
+        self.progress_callbacks: dict[int, CallableABC[[Any], None] | None] = {}
 
-    def start(self):
+    def start(self) -> None:
         self.proc = subprocess.Popen(
             [
                 self.codeql_path,
@@ -55,14 +59,20 @@ class CodeQLQueryServer:
         )
         self.stderr_thread.start()
 
-    def _stderr_loop(self):
+    def _stderr_loop(self) -> None:
+        if self.proc is None or self.proc.stderr is None:
+            logger.error("Cannot run stderr loop: process not started")
+            return
         while self.running:
             line = self.proc.stderr.readline()
             # For debugging
             # if line:
             #    print("[CodeQL stderr]", line.strip())
 
-    def _read_loop(self):
+    def _read_loop(self) -> None:
+        if self.proc is None or self.proc.stdout is None:
+            logger.error("Cannot run read loop: process not started")
+            return
         logger.debug("Read loop started")
         while self.running:
             line = self.proc.stdout.readline()
@@ -81,7 +91,7 @@ class CodeQLQueryServer:
                 except Exception as e:
                     logger.error("Failed to parse message: %s", e)
 
-    def _handle_message(self, message):
+    def _handle_message(self, message: dict[str, Any]) -> None:
         if message.get("method") == "ql/progressUpdated":
             params = message.get("params", {})
             progress_id = params.get("id")
@@ -119,7 +129,7 @@ class CodeQLQueryServer:
                 message['id'], json.dumps(message['error'], indent=2)
             )
 
-    def _send(self, payload):
+    def _send(self, payload: dict[str, Any]) -> None:
         if not self.proc or not self.proc.stdin:
             logger.warning("Tried to send but process not running.")
             return
@@ -130,7 +140,7 @@ class CodeQLQueryServer:
         self.proc.stdin.write(content)
         self.proc.stdin.flush()
 
-    def send_request(self, method, params, callback, progress_callback=None):
+    def send_request(self, method: str, params: dict[str, Any] | list[Any], callback: CallableABC[[Any], None], progress_callback: CallableABC[[Any], None] | None = None) -> None:
         req_id = self.id_counter
         self.id_counter += 1
 
@@ -150,12 +160,12 @@ class CodeQLQueryServer:
         )
         self._send(payload)
 
-    def stop(self):
+    def stop(self) -> None:
         self.running = False
         if self.proc:
             self.proc.terminate()
 
-    def find_class_identifier_position(self, filepath, class_name):
+    def find_class_identifier_position(self, filepath: str, class_name: str) -> tuple[int, int, int, int]:
         """
         Find the 1-based position of the class name identifier in a QL file.
         Returns: (start_line, start_col, end_line, end_col)
@@ -177,7 +187,7 @@ class CodeQLQueryServer:
             f"Class name '{class_name}' not found in file: {filepath}"
         )
 
-    def find_predicate_identifier_position(self, filepath, predicate_name):
+    def find_predicate_identifier_position(self, filepath: str, predicate_name: str) -> tuple[int, int, int, int]:
         """
         Find the 1-based position of a predicate name in a QL file.
         Supports: predicate name(...), name(...) (inside class), etc.
@@ -199,8 +209,8 @@ class CodeQLQueryServer:
         )
 
     def register_databases(
-        self, db_paths, callback=None, progress_callback=None
-    ):
+        self, db_paths: list[str], callback: CallableABC[[Any], None] | None = None, progress_callback: CallableABC[[Any], None] | None = None
+    ) -> None:
         resolved = [str(Path(p).resolve()) for p in db_paths]
         progress_id = self.progress_id
         self.progress_id += 1
@@ -218,8 +228,8 @@ class CodeQLQueryServer:
         )
 
     def deregister_databases(
-        self, db_paths, callback=None, progress_callback=None
-    ):
+        self, db_paths: list[str], callback: CallableABC[[Any], None] | None = None, progress_callback: CallableABC[[Any], None] | None = None
+    ) -> None:
         resolved = [str(Path(p).resolve()) for p in db_paths]
         progress_id = self.progress_id
         self.progress_id += 1
@@ -238,12 +248,12 @@ class CodeQLQueryServer:
 
     def evaluate_queries(
         self,
-        query_path,
-        db_path,
-        output_path,
-        callback=None,
-        progress_callback=None,
-    ):
+        query_path: str,
+        db_path: str,
+        output_path: str,
+        callback: CallableABC[[Any], None] | None = None,
+        progress_callback: CallableABC[[Any], None] | None = None,
+    ) -> None:
         db = str(Path(db_path).resolve())
         query_path = str(Path(query_path).resolve())
         output_path = str(Path(output_path).resolve())
@@ -264,7 +274,7 @@ class CodeQLQueryServer:
             "progressId": progress_id,
         }
 
-        def on_done(result):
+        def on_done(result: dict[str, Any]) -> None:
             logger.debug("evaluateQueries done: %s", result)
             if result.get("resultType") != 0:
                 raise RuntimeError(
@@ -282,7 +292,7 @@ class CodeQLQueryServer:
             progress_callback=progress_callback,
         )
 
-    def evaluate_and_wait(self, query_path, db_path, output_path):
+    def evaluate_and_wait(self, query_path: str, db_path: str, output_path: str) -> None:
         progress_id = self.progress_id
         progress_cb, done = self.wait_for_progress_done(progress_id)
         self.evaluate_queries(
@@ -293,14 +303,14 @@ class CodeQLQueryServer:
 
     def quick_evaluate_and_wait(
         self,
-        query_path,
-        db_path,
-        output_path,
-        start_line,
-        start_col,
-        end_line,
-        end_col,
-    ):
+        query_path: str,
+        db_path: str,
+        output_path: str,
+        start_line: int,
+        start_col: int,
+        end_line: int,
+        end_col: int,
+    ) -> None:
         progress_id = self.progress_id
         progress_cb, done = self.wait_for_progress_done(progress_id)
         self.quick_evaluate(
@@ -318,16 +328,16 @@ class CodeQLQueryServer:
 
     def quick_evaluate(
         self,
-        file_path,
-        db_path,
-        output_path,
-        start_line,
-        start_col,
-        end_line,
-        end_col,
-        callback=None,
-        progress_callback=None,
-    ):
+        file_path: str,
+        db_path: str,
+        output_path: str,
+        start_line: int,
+        start_col: int,
+        end_line: int,
+        end_col: int,
+        callback: CallableABC[[Any], None] | None = None,
+        progress_callback: CallableABC[[Any], None] | None = None,
+    ) -> None:
         progress_id = self.progress_id
         self.progress_id += 1
 
@@ -354,7 +364,7 @@ class CodeQLQueryServer:
             "progressId": progress_id,
         }
 
-        def on_done(result):
+        def on_done(result: dict[str, Any]) -> None:
             logger.debug("quickEvaluate done: %s", result)
             if result.get("resultType") != 0:
                 raise RuntimeError(
@@ -371,7 +381,7 @@ class CodeQLQueryServer:
             progress_callback=progress_callback,
         )
 
-    def decode_bqrs(self, bqrs_path, output_format="json"):
+    def decode_bqrs(self, bqrs_path: str, output_format: str = "json") -> str:
         bqrs_path = str(Path(bqrs_path).resolve())
 
         if not os.path.exists(bqrs_path):
@@ -398,10 +408,10 @@ class CodeQLQueryServer:
 
         return result.stdout
 
-    def wait_for_progress_done(self, expected_progress_id):
+    def wait_for_progress_done(self, expected_progress_id: int) -> tuple[CallableABC[[Any], None], threading.Event]:
         event = threading.Event()
 
-        def progress_callback(message):
+        def progress_callback(message: Any) -> None:
             if (
                 isinstance(message, dict)
                 and message.get("id") == expected_progress_id
@@ -411,11 +421,11 @@ class CodeQLQueryServer:
 
         return progress_callback, event
 
-    def wait_for_completion_callback(self):
+    def wait_for_completion_callback(self) -> tuple[CallableABC[[Any], None], threading.Event, dict[str, Any]]:
         done = threading.Event()
-        result_holder = {}
+        result_holder: dict[str, Any] = {}
 
-        def callback(result):
+        def callback(result: Any) -> None:
             result_holder["result"] = result
             done.set()
 

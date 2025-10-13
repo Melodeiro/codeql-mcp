@@ -1,14 +1,23 @@
 """Query validation utilities"""
 
+from __future__ import annotations
+
 import subprocess
 import logging
 from pathlib import Path
+from typing import TypedDict
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
 
-def validate_query_file(query_path: str) -> dict:
+class ValidationResult(TypedDict):
+    """Result of validation operation"""
+    valid: bool
+    error: str | None
+
+
+def validate_query_file(query_path: str) -> ValidationResult:
     """Validate query file exists and has correct extension
     
     Returns:
@@ -25,7 +34,7 @@ def validate_query_file(query_path: str) -> dict:
     return {"valid": True, "error": None}
 
 
-def validate_query_syntax(query_path: str, codeql_path: str, timeout: int = 30) -> dict:
+def validate_query_syntax(query_path: str, codeql_path: str, timeout: int = 30) -> ValidationResult:
     """Validate CodeQL query syntax using compile --check-only
     
     Args:

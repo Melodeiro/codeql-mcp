@@ -1,9 +1,16 @@
 """High-level analysis: database analysis and security scanning"""
 
+from __future__ import annotations
+
 import subprocess
+from typing import TYPE_CHECKING, Any
+from collections.abc import Callable, Awaitable
+
+if TYPE_CHECKING:
+    from codeqlclient import CodeQLQueryServer
 
 
-def analyze_database_impl(qs, db_path: str, query_or_suite: str, output_format: str = "sarif-latest",
+def analyze_database_impl(qs: CodeQLQueryServer, db_path: str, query_or_suite: str, output_format: str = "sarif-latest",
                           output_path: str = "/tmp/analysis") -> str:
     """Implementation for analyze_database tool"""
     try:
@@ -36,9 +43,14 @@ def analyze_database_impl(qs, db_path: str, query_or_suite: str, output_format: 
         return f"Error during analysis: {str(e)}"
 
 
-async def run_security_scan_impl(qs, get_db_info_func, list_packs_func,
-                                  db_path: str, language: str = None, 
-                                  output_path: str = "/tmp/security-scan") -> str:
+async def run_security_scan_impl(
+    qs: CodeQLQueryServer, 
+    get_db_info_func: Callable[[str], Awaitable[dict[str, Any]]], 
+    list_packs_func: Callable[[], Awaitable[dict[str, Any]]],
+    db_path: str, 
+    language: str | None = None, 
+    output_path: str = "/tmp/security-scan"
+) -> str:
     """Implementation for run_security_scan tool
     
     Note: Requires async functions for get_database_info and list_query_packs
@@ -47,8 +59,9 @@ async def run_security_scan_impl(qs, get_db_info_func, list_packs_func,
         # Auto-detect language if not provided
         if not language:
             db_info = await get_db_info_func(db_path)
-            if "error" in db_info:
-                return db_info["error"]
+            error_value = db_info.get("error")
+            if error_value is not None:
+                return str(error_value)
             language = db_info.get("language")
             if not language:
                 return "Could not determine language from database"
@@ -60,7 +73,19 @@ async def run_security_scan_impl(qs, get_db_info_func, list_packs_func,
             return f"Unsupported language: {language}. Supported: {list(query_packs.keys())}"
 
         # Use the security-extended suite for comprehensive coverage
-        suite = query_packs[language]["suites"][1]  # security-extended
+        lang_pack_data = query_packs.get(language)
+        if not isinstance(lang_pack_data, dict) or "suites" not in lang_pack_data:
+            return f"Invalid pack data for language: {language}"
+        
+        suites = lang_pack_data.get("suites")
+        if not isinstance(suites, list) or len(suites) < 2:
+            return f"Invalid suites data for language: {language}"
+        
+        suite_item = suites[1]
+        if not isinstance(suite_item, str):
+            return f"Invalid suite item for language: {language}"
+        
+        suite = suite_item  # security-extended
 
         # Run the query suite
         result = subprocess.run([

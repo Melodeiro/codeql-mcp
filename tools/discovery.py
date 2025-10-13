@@ -1,11 +1,18 @@
 """Query and pack discovery: languages, packs, and security queries"""
 
+from __future__ import annotations
+
 import subprocess
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
+from collections.abc import Callable, Awaitable
+
+if TYPE_CHECKING:
+    from codeqlclient import CodeQLQueryServer
 
 
-def list_supported_languages_impl(qs) -> list:
+def list_supported_languages_impl(qs: CodeQLQueryServer) -> list[str]:
     """Implementation for list_supported_languages tool"""
     try:
         result = subprocess.run([qs.codeql_path, "resolve", "languages"],
@@ -28,7 +35,7 @@ def list_supported_languages_impl(qs) -> list:
         return [f"Error: {str(e)}"]
 
 
-def list_query_packs_impl(qs) -> dict:
+def list_query_packs_impl(qs: CodeQLQueryServer) -> dict[str, Any]:
     """Implementation for list_query_packs tool"""
     try:
         # Get installed packs using codeql resolve packs
@@ -53,7 +60,7 @@ def list_query_packs_impl(qs) -> dict:
             }
 
         # Parse the output to extract pack information
-        packs_by_language = {}
+        packs_by_language: dict[str, Any] = {}
         lines = result.stdout.strip().split('\n')
 
         for line in lines:
@@ -92,7 +99,7 @@ def list_query_packs_impl(qs) -> dict:
         return {"error": f"Error listing packs: {str(e)}"}
 
 
-def discover_queries_impl(qs, pack_name: str = None, language: str = None, category: str = None) -> list:
+def discover_queries_impl(qs: CodeQLQueryServer, pack_name: str | None = None, language: str | None = None, category: str | None = None) -> list[str | dict[str, Any]]:
     """Implementation for discover_queries tool"""
     try:
         cmd = [qs.codeql_path, "resolve", "queries", "--format=bylanguage"]
@@ -133,7 +140,7 @@ def discover_queries_impl(qs, pack_name: str = None, language: str = None, categ
         if "byLanguage" in data:
             data = data["byLanguage"]
 
-        queries = []
+        queries: list[str | dict[str, Any]] = []
         for extractor, query_data in data.items():
             # query_data is dict: {"path/to/query.ql": {metadata}, ...}
             for query_path in query_data.keys():
@@ -155,9 +162,14 @@ def discover_queries_impl(qs, pack_name: str = None, language: str = None, categ
         return [f"Error: {str(e)}"]
 
 
-async def find_security_queries_impl(qs, get_db_info_func, discover_queries_func, 
-                                     language: str = None, vulnerability_type: str = None, 
-                                     db_path: str = None) -> dict:
+async def find_security_queries_impl(
+    qs: CodeQLQueryServer, 
+    get_db_info_func: Callable[[str], Awaitable[dict[str, Any]]], 
+    discover_queries_func: Callable[..., Awaitable[list[str | dict[str, Any]]]], 
+    language: str | None = None, 
+    vulnerability_type: str | None = None, 
+    db_path: str | None = None
+) -> dict[str, Any]:
     """Implementation for find_security_queries tool
     
     Note: Requires async functions for get_database_info and discover_queries
@@ -182,9 +194,9 @@ async def find_security_queries_impl(qs, get_db_info_func, discover_queries_func
             return {"error": all_queries[0]}
 
         # Group by vulnerability types
-        security_queries = {}
+        security_queries: dict[str, list[dict[str, Any]]] = {}
 
-        vuln_patterns = {
+        vuln_patterns: dict[str, list[str]] = {
             "sql_injection": ["sql", "injection", "sqli", "cwe-089"],
             "xss": ["xss", "cross-site", "scripting", "cwe-079"],
             "command_injection": ["command", "injection", "exec", "cwe-078"],

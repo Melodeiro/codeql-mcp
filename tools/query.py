@@ -1,9 +1,16 @@
 """Query execution: predicates and full query evaluation"""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from validation import validate_query_file, validate_query_syntax
 
+if TYPE_CHECKING:
+    from codeqlclient import CodeQLQueryServer
 
-def test_predicate_impl(qs, file: str, db: str, symbol: str, output_path: str = "/tmp/quickeval.bqrs") -> str:
+
+def test_predicate_impl(qs: CodeQLQueryServer, file: str, db: str, symbol: str, output_path: str = "/tmp/quickeval.bqrs") -> str:
     """Implementation for test_predicate tool"""
     # Validate query file
     validation = validate_query_file(file)
@@ -32,7 +39,7 @@ def test_predicate_impl(qs, file: str, db: str, symbol: str, output_path: str = 
     return output_path
 
 
-def evaluate_query_impl(qs, query_path: str, db_path: str, output_path: str = "/tmp/eval.bqrs") -> str:
+def evaluate_query_impl(qs: CodeQLQueryServer, query_path: str, db_path: str, output_path: str = "/tmp/eval.bqrs") -> str:
     """Implementation for evaluate_query tool"""
     # Validate query file exists and has correct extension
     file_validation = validate_query_file(query_path)

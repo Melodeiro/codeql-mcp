@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import os
+from typing import Any
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -23,11 +26,11 @@ from tools import (
 )
 
 
-mcp = FastMCP(
+mcp: FastMCP = FastMCP(
     name="CodeQL",
-    port=os.environ.get("PORT", 8000),
+    port=int(os.environ.get("PORT", 8000)),
 )
-qs = CodeQLQueryServer()
+qs: CodeQLQueryServer = CodeQLQueryServer()
 qs.start()
 
 
@@ -150,7 +153,7 @@ async def evaluate_query(
 
 @mcp.tool()
 async def create_database(source_path: str, language: str, db_path: str,
-                         command: str = None, overwrite: bool = False) -> str:
+                         command: str | None = None, overwrite: bool = False) -> str:
     """Build a CodeQL database from source code
     
     Creates a database by extracting code structure and relationships from your 
@@ -182,7 +185,7 @@ async def create_database(source_path: str, language: str, db_path: str,
 
 
 @mcp.tool()
-async def list_supported_languages() -> list:
+async def list_supported_languages() -> list[str]:
     """List programming languages supported by CodeQL for analysis
     
     Returns available language identifiers that can be used with create_database().
@@ -200,7 +203,7 @@ async def list_supported_languages() -> list:
 
 
 @mcp.tool()
-async def list_query_packs() -> dict:
+async def list_query_packs() -> dict[str, Any]:
     """List installed CodeQL query packs available for analysis
     
     Query packs contain pre-written queries for security analysis, code quality,
@@ -221,7 +224,7 @@ async def list_query_packs() -> dict:
 
 
 @mcp.tool()
-async def discover_queries(pack_name: str = None, language: str = None, category: str = None) -> list:
+async def discover_queries(pack_name: str | None = None, language: str | None = None, category: str | None = None) -> list[str | dict[str, Any]]:
     """Discover available CodeQL queries from installed packs
     
     Lists individual query files available in query packs. Useful for finding
@@ -250,7 +253,7 @@ async def discover_queries(pack_name: str = None, language: str = None, category
 
 
 @mcp.tool()
-async def find_security_queries(language: str = None, vulnerability_type: str = None, db_path: str = None) -> dict:
+async def find_security_queries(language: str | None = None, vulnerability_type: str | None = None, db_path: str | None = None) -> dict[str, Any]:
     """Find security-focused CodeQL queries by language and vulnerability type
     
     Searches available query packs for security queries matching specific 
@@ -308,7 +311,7 @@ async def analyze_database(db_path: str, query_or_suite: str, output_format: str
 
 
 @mcp.tool()
-async def get_database_info(db_path: str) -> dict:
+async def get_database_info(db_path: str) -> dict[str, Any]:
     """Retrieve metadata about a CodeQL database
     
     Extracts database configuration including programming language, creation time,
@@ -336,7 +339,7 @@ async def get_database_info(db_path: str) -> dict:
 
 
 @mcp.tool()
-async def run_security_scan(db_path: str, language: str = None, output_path: str = "/tmp/security-scan") -> str:
+async def run_security_scan(db_path: str, language: str | None = None, output_path: str = "/tmp/security-scan") -> str:
     """Execute comprehensive security analysis on a codebase
     
     Runs a curated security-focused query suite against the database. This is a
@@ -371,5 +374,6 @@ async def run_security_scan(db_path: str, language: str = None, output_path: str
 
 if __name__ == "__main__":
     print("Starting CodeQL MCP server...")
-    mcp.settings.port = os.environ.get("PORT", 8000)
+    port_env = os.environ.get("PORT", "8000")
+    mcp.settings.port = int(port_env) if isinstance(port_env, str) else port_env
     mcp.run("streamable-http")

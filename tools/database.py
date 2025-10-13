@@ -1,17 +1,25 @@
 """Database operations: creation, registration, and metadata retrieval"""
 
+from __future__ import annotations
+
 import subprocess
 import logging
+import json
+import re
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from codeqlclient import CodeQLQueryServer
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
 # Cache for database info to avoid repeated calls
-db_info_cache = {}
+db_info_cache: dict[str, dict[str, Any]] = {}
 
 
-def register_database_impl(qs, db_path: str) -> str:
+def register_database_impl(qs: CodeQLQueryServer, db_path: str) -> str:
     """Implementation for register_database tool"""
     db_path_resolved = Path(db_path).resolve()
     if not db_path_resolved.exists():
@@ -38,8 +46,8 @@ def register_database_impl(qs, db_path: str) -> str:
     return f"Database registered: {db_path}"
 
 
-def create_database_impl(qs, source_path: str, language: str, db_path: str,
-                         command: str = None, overwrite: bool = False) -> str:
+def create_database_impl(qs: CodeQLQueryServer, source_path: str, language: str, db_path: str,
+                         command: str | None = None, overwrite: bool = False) -> str:
     """Implementation for create_database tool"""
     try:
         # Build the command
@@ -67,7 +75,7 @@ def create_database_impl(qs, source_path: str, language: str, db_path: str,
         return f"Error creating database: {str(e)}"
 
 
-def get_database_info_impl(qs, db_path: str) -> dict:
+def get_database_info_impl(qs: CodeQLQueryServer, db_path: str) -> dict[str, Any]:
     """Implementation for get_database_info tool"""
     global db_info_cache
 
@@ -88,7 +96,6 @@ def get_database_info_impl(qs, db_path: str) -> dict:
             return {"error": f"Failed to get database info: {result.stderr}"}
 
         # Parse JSON output from codeql resolve database
-        import json
         db_data = json.loads(result.stdout)
         
         # Extract language from languages array
@@ -109,7 +116,6 @@ def get_database_info_impl(qs, db_path: str) -> dict:
         )
 
         if baseline_result.returncode == 0:
-            import re
             for line in baseline_result.stdout.split('\n'):
                 if 'baseline of' in line and 'lines' in line:
                     numbers = re.findall(r'\d+', line)
